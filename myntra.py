@@ -450,8 +450,7 @@ def perform_calculations(mrp, discount,
     if platform == 'Jiomart':
         total_deductions = total_platform_deduction 
     elif platform == 'Myntra':
-         # --- (UPDATED) REMOVED Marketing Fee from Platform Deductions ---
-         # Marketing Fee is now treated as an External Expense (Paid separately by user)
+         # Marketing Fee is treated as an External Expense
          total_deductions = final_commission + gt_charge + yk_fixed_fee 
     elif platform == 'Meesho':
         total_deductions = final_commission 
@@ -460,12 +459,11 @@ def perform_calculations(mrp, discount,
         
     settled_amount = customer_paid_amount - total_deductions - tds - tcs
     
-    # --- 5. Net Profit (Actual Cash in Hand) ---
-    # Deduct Royalty AND Marketing Fee HERE because you pay it separately from the settlement
+    # --- 5. Net Profit ---
     net_profit = settled_amount - product_cost - royalty_fee - marketing_fee_base - marketing_fee_gst
 
     return (sale_price, gt_charge, customer_paid_amount, royalty_fee,
-            marketing_fee_base, marketing_fee_gst, # Return GST too
+            marketing_fee_base, marketing_fee_gst,
             final_commission, 
             commission_rate, settled_amount, taxable_amount_value,
             net_profit, tds, tcs, invoice_tax_rate, 
@@ -493,10 +491,8 @@ def find_discount_for_target_profit(mrp, target_profit, product_cost, platform,
                                        apply_royalty, 0.0) 
         
         if results is None: return -9999.0
-        # Return Net Profit (which now accounts for Royalty deduction)
         return results[10]
 
-    # --- Optimizing Search Step ---
     step_size = 5.0
 
     if platform == 'Meesho':
@@ -508,7 +504,6 @@ def find_discount_for_target_profit(mrp, target_profit, product_cost, platform,
         while required_wdp >= 0:
             current_profit = get_net_profit(0.0, required_wdp) 
             if current_profit < target_profit:
-                # Revert one step to stay above target
                 final_wdp = required_wdp + step_size
                 target_wdp = min(final_wdp, mrp) 
                 
@@ -521,7 +516,6 @@ def find_discount_for_target_profit(mrp, target_profit, product_cost, platform,
         final_profit = get_net_profit(0.0, 0.0)
         return mrp, final_profit, 100.0 
 
-    # For other platforms
     initial_profit = get_net_profit(0.0) 
     if initial_profit < target_profit:
         return None, initial_profit, 0.0 
@@ -540,7 +534,6 @@ def find_discount_for_target_profit(mrp, target_profit, product_cost, platform,
     return mrp, final_profit, 100.0
 
 
-# --- Helper function for bulk processing ---
 def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charge=0.0, jio_benefit=0.0):
     
     results = []
@@ -664,7 +657,6 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
                 })
 
             else: 
-                # Check With Cost Price (Target Margin)
                 discount_amount, final_profit, discount_percent = find_discount_for_target_profit(
                     mrp, target_margin, cost, current_platform,
                     myntra_brand, myntra_cat, myntra_gen, apply_kuchipoo_royalty,
@@ -680,7 +672,6 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
                 if discount_amount is not None:
                     wdp_calc = (mrp - discount_amount)
                     
-                    # Re-run calc to get breakdown
                     (sale_price, gt_charge, customer_paid_amount, royalty_fee,
                      marketing_fee_base, marketing_fee_gst, final_commission,
                      commission_rate, settled_amount, taxable_amount_value,
@@ -763,15 +754,15 @@ if sku_file is not None and 'sku_df' not in st.session_state:
     except Exception as e:
         st.error(f"Error loading SKU file: {e}")
 
-# --- Templates (Same as before) ---
+# --- UPDATED TEMPLATES (Added Selling Price) ---
 st.markdown("**Download Templates (CSV):**")
 with st.expander("Show Templates"):
     col1, col2 = st.columns(2)
     with col1:
-        myntra_template_csv = "seller_sku_code,product_mrp,product_cost,brand,article_type,gender,style_id,style_name\nDKUC-TEST-001,1999,500,KUCHIPOO,Tshirts,Boys,123456,Test Style\n"
+        myntra_template_csv = "seller_sku_code,product_mrp,product_cost,selling_price,brand,article_type,gender,style_id,style_name\nDKUC-TEST-001,1999,500,1499,KUCHIPOO,Tshirts,Boys,123456,Test Style\n"
         st.download_button("Myntra Template", data=myntra_template_csv, file_name="template_target_myntra.csv", mime="text/csv")
     with col2:
-        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name\nMyntra,DKUC-MYN-001,1999,500,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra\n"
+        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,selling_price,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name\nMyntra,DKUC-MYN-001,1999,500,1299,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra\n"
         st.download_button("Consolidated Template", data=consolidated_template_csv, file_name="template_target_consolidated.csv", mime="text/csv")
 
 st.divider()
@@ -964,11 +955,6 @@ if main_mode == "Single Product Calculation":
                 c1, c2 = st.columns(2)
                 c1.metric("Commission (+GST)", f"₹ {final_commission:,.2f}")
                 c2.metric("Fixed/Logistics (+GST)", f"₹ {gt_charge + yk_fixed_fee:,.2f}")
-                
-                # if platform_selector == 'Myntra':
-                #    c3, c4 = st.columns(2)
-                #    c3.metric("Marketing Base", f"₹ {marketing_fee_base:,.2f}")
-                #    c4.metric("Marketing GST (18%)", f"₹ {marketing_fee_gst:,.2f}")
 
                 total_deductions_display = final_commission + gt_charge + yk_fixed_fee 
                 st.info(f"Total Platform Deductions: ₹ {total_deductions_display:,.2f}")
@@ -976,8 +962,7 @@ if main_mode == "Single Product Calculation":
             with col_right:
                 st.markdown("### 3. Settlement & Profit")
                 
-                st.metric("🏦 Bank Settlement (From Platform)", f"₹ {settled_amount:,.2f}", 
-                          help="This amount will come to your bank account from Myntra/Platform.")
+                st.metric("🏦 Bank Settlement (From Platform)", f"₹ {settled_amount:,.2f}")
                 
                 st.markdown("---")
                 st.write("**Your Expenses after Settlement:**")
@@ -1025,7 +1010,6 @@ elif main_mode == "Bulk Calculation":
     st.markdown("---")
     st.markdown("###### **4. Set Calculation Parameters**")
 
-    # --- Global Inputs for Bulk ---
     bulk_target_margin = 0.0
     bulk_meesho_charge_rate = 0.05 
     bulk_jiomart_benefit_rate = 0.0
@@ -1065,4 +1049,3 @@ elif main_mode == "Bulk Calculation":
                     mime="text/csv",
                     use_container_width=True
                 )
-

@@ -774,12 +774,20 @@ if sku_file is not None and 'sku_df' not in st.session_state:
 # --- UPDATED TEMPLATES (Added Selling Price) ---
 st.markdown("**Download Templates (CSV):**")
 with st.expander("Show Templates"):
+    template_mode = st.radio("Template format for:", ("Check With Selling Price", "Check With Cost Price"), horizontal=True)
     col1, col2 = st.columns(2)
-    with col1:
+    
+    if template_mode == "Check With Selling Price":
         myntra_template_csv = "seller_sku_code,product_mrp,product_cost,selling_price,brand,article_type,gender,style_id,style_name,return_charges,return_product_cost\nDKUC-TEST-001,1999,500,1499,KUCHIPOO,Tshirts,Boys,123456,Test Style,0,0\nYK-TEST-002,1999,600,1299,YK,Tshirts,Boys,123457,YK Style,45,150\n"
+        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,selling_price,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name,return_charges,return_product_cost\nMyntra,DKUC-MYN-001,1999,500,1299,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra,0,0\n"
+    else:
+        # Templates WITHOUT selling_price column
+        myntra_template_csv = "seller_sku_code,product_mrp,product_cost,brand,article_type,gender,style_id,style_name,return_charges,return_product_cost\nDKUC-TEST-001,1999,500,KUCHIPOO,Tshirts,Boys,123456,Test Style,0,0\nYK-TEST-002,1999,600,YK,Tshirts,Boys,123457,YK Style,45,150\n"
+        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name,return_charges,return_product_cost\nMyntra,DKUC-MYN-001,1999,500,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra,0,0\n"
+
+    with col1:
         st.download_button("Myntra Template", data=myntra_template_csv, file_name="template_target_myntra.csv", mime="text/csv")
     with col2:
-        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,selling_price,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name,return_charges,return_product_cost\nMyntra,DKUC-MYN-001,1999,500,1299,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra,0,0\n"
         st.download_button("Consolidated Template", data=consolidated_template_csv, file_name="template_target_consolidated.csv", mime="text/csv")
 
 st.divider()

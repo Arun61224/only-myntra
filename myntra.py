@@ -298,7 +298,8 @@ def perform_calculations(mrp, discount,
                            apply_kuchipoo_royalty='No',
                            weight_in_kg=0.0, shipping_zone=None, jiomart_category=None, jiomart_benefit_rate=0.0,
                            meesho_charge_rate=0.0, wrong_defective_price=None,
-                           apply_royalty='No', marketing_fee_rate=0.0):
+                           apply_royalty='No', marketing_fee_rate=0.0,
+                           yk_return_charges=0.0, yk_return_product_cost=0.0): # <-- ADDED NEW PARAMETERS
     
     gt_charge = 0.0 
     yk_fixed_fee = 0.0 
@@ -461,6 +462,10 @@ def perform_calculations(mrp, discount,
     
     # --- 5. Net Profit ---
     net_profit = settled_amount - product_cost - royalty_fee - marketing_fee_base - marketing_fee_gst
+    
+    # --- YK Return Charges Deduction ---
+    if platform == 'Myntra' and myntra_new_brand in ["YK", "YK Disney", "YK Marvel"]:
+        net_profit = net_profit - yk_return_charges - yk_return_product_cost
 
     return (sale_price, gt_charge, customer_paid_amount, royalty_fee,
             marketing_fee_base, marketing_fee_gst,
@@ -480,7 +485,8 @@ def find_discount_for_target_profit(mrp, target_profit, product_cost, platform,
                                     apply_kuchipoo_royalty='No',
                                     weight_in_kg=0.0, shipping_zone=None, jiomart_category=None, jiomart_benefit_rate=0.0,
                                     meesho_charge_rate=0.0, wrong_defective_price=None, 
-                                    apply_royalty='No'):
+                                    apply_royalty='No', 
+                                    yk_return_charges=0.0, yk_return_product_cost=0.0): # <-- ADDED NEW PARAMETERS
 
     def get_net_profit(disc, wdp=None):
         results = perform_calculations(mrp, disc, product_cost, platform,
@@ -488,7 +494,8 @@ def find_discount_for_target_profit(mrp, target_profit, product_cost, platform,
                                        apply_kuchipoo_royalty,
                                        weight_in_kg, shipping_zone, jiomart_category, jiomart_benefit_rate,
                                        meesho_charge_rate, wdp,
-                                       apply_royalty, 0.0) 
+                                       apply_royalty, 0.0,
+                                       yk_return_charges, yk_return_product_cost) # <-- PASSED NEW PARAMETERS
         
         if results is None: return -9999.0
         return results[10]
@@ -581,6 +588,10 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
     jio_cat_col = 'jiomart_category' if 'jiomart_category' in cols else 'category' if 'category' in cols else None
     weight_col = 'product_weight_kg' if 'product_weight_kg' in cols else 'product_weight' if 'product_weight' in cols else None
     zone_col = 'shipping_zone' if 'shipping_zone' in cols else None
+    
+    # Optional columns for Bulk Return Deductions
+    ret_charges_col = 'return_charges' if 'return_charges' in cols else None
+    ret_cost_col = 'return_product_cost' if 'return_product_cost' in cols else None
 
     output_rows = []
 
@@ -609,6 +620,9 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
                     else: jio_weight = weight_val
                 except: jio_weight = 0.5 
             
+            yk_ret_chg = float(getattr(row, ret_charges_col)) if ret_charges_col and hasattr(row, ret_charges_col) else 0.0
+            yk_ret_cost = float(getattr(row, ret_cost_col)) if ret_cost_col and hasattr(row, ret_cost_col) else 0.0
+
             apply_royalty = 'No'
             apply_kuchipoo_royalty = 'No'
             
@@ -645,7 +659,8 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
                     myntra_brand, myntra_cat, myntra_gen, apply_kuchipoo_royalty,
                     jio_weight, jio_zone, jio_cat, jio_benefit,
                     meesho_charge, wdp if current_platform == 'Meesho' else None,
-                    apply_royalty, 0.0
+                    apply_royalty, 0.0,
+                    yk_ret_chg, yk_ret_cost
                 )
                 
                 output_data.update({
@@ -662,7 +677,8 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
                     myntra_brand, myntra_cat, myntra_gen, apply_kuchipoo_royalty,
                     jio_weight, jio_zone, jio_cat, jio_benefit,
                     meesho_charge, None,
-                    apply_royalty
+                    apply_royalty,
+                    yk_ret_chg, yk_ret_cost
                 )
                 
                 selling_price_req = (mrp - discount_amount) if discount_amount is not None else "N/A"
@@ -683,7 +699,8 @@ def run_bulk_processing(df, bulk_platform, mode, target_margin=0.0, meesho_charg
                         myntra_brand, myntra_cat, myntra_gen, apply_kuchipoo_royalty,
                         jio_weight, jio_zone, jio_cat, jio_benefit,
                         meesho_charge, wdp_calc if current_platform == 'Meesho' else None,
-                        apply_royalty, 0.0
+                        apply_royalty, 0.0,
+                        yk_ret_chg, yk_ret_cost
                     )
                     bank_settlement_amt = settled_amount
                     marketing_total_pay = marketing_fee_base + marketing_fee_gst
@@ -759,10 +776,10 @@ st.markdown("**Download Templates (CSV):**")
 with st.expander("Show Templates"):
     col1, col2 = st.columns(2)
     with col1:
-        myntra_template_csv = "seller_sku_code,product_mrp,product_cost,selling_price,brand,article_type,gender,style_id,style_name\nDKUC-TEST-001,1999,500,1499,KUCHIPOO,Tshirts,Boys,123456,Test Style\n"
+        myntra_template_csv = "seller_sku_code,product_mrp,product_cost,selling_price,brand,article_type,gender,style_id,style_name,return_charges,return_product_cost\nDKUC-TEST-001,1999,500,1499,KUCHIPOO,Tshirts,Boys,123456,Test Style,0,0\nYK-TEST-002,1999,600,1299,YK,Tshirts,Boys,123457,YK Style,45,150\n"
         st.download_button("Myntra Template", data=myntra_template_csv, file_name="template_target_myntra.csv", mime="text/csv")
     with col2:
-        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,selling_price,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name\nMyntra,DKUC-MYN-001,1999,500,1299,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra\n"
+        consolidated_template_csv = "platform,seller_sku_code,product_mrp,product_cost,selling_price,myntra_brand,myntra_article_type,myntra_gender,jiomart_category,product_weight_kg,shipping_zone,style_id,style_name,return_charges,return_product_cost\nMyntra,DKUC-MYN-001,1999,500,1299,KUCHIPOO,Tshirts,Boys,,,,123456,Test Myntra,0,0\n"
         st.download_button("Consolidated Template", data=consolidated_template_csv, file_name="template_target_consolidated.csv", mime="text/csv")
 
 st.divider()
@@ -835,6 +852,10 @@ if main_mode == "Single Product Calculation":
         shipping_zone = None
         meesho_charge_rate = 0.0
         apply_royalty = 'No' 
+        
+        # New Return variables initialized to 0.0
+        yk_return_charges = 0.0
+        yk_return_product_cost = 0.0
 
         if platform_selector == 'Myntra':
             col_brand, col_cat, col_gen = st.columns(3)
@@ -854,6 +875,13 @@ if main_mode == "Single Product Calculation":
             except KeyError:
                  gender_options = []
                  myntra_new_gender = col_gen.selectbox("Select Gender:", gender_options, index=0, key="myntra_gen_v3")
+                 
+            # --- NEW UI FOR YK BRANDS ---
+            if myntra_new_brand in ["YK", "YK Disney", "YK Marvel"]:
+                st.markdown("**YK Brands Return Deductions (Optional)**")
+                col_ret1, col_ret2 = st.columns(2)
+                yk_return_charges = col_ret1.number_input("Average Return Logistics Charge (₹)", value=0.0, min_value=0.0)
+                yk_return_product_cost = col_ret2.number_input("Average Return Product Loss (₹)", value=0.0, min_value=0.0)
 
 
         elif platform_selector == 'Jiomart':
@@ -918,7 +946,8 @@ if main_mode == "Single Product Calculation":
                     new_mrp, product_margin_target_rs, product_cost, platform_selector,
                     myntra_new_brand, myntra_new_category, myntra_new_gender, apply_kuchipoo_royalty, 
                     weight_in_kg, shipping_zone, jiomart_category, jiomart_benefit_rate,
-                    meesho_charge_rate, None, apply_royalty
+                    meesho_charge_rate, None, apply_royalty,
+                    yk_return_charges, yk_return_product_cost # <-- PASSED YK PARAMETERS
                 )
                 
                 if calculated_discount is None:
@@ -941,7 +970,8 @@ if main_mode == "Single Product Calculation":
                  myntra_new_brand, myntra_new_category, myntra_new_gender, apply_kuchipoo_royalty, 
                  weight_in_kg, shipping_zone, jiomart_category, jiomart_benefit_rate,
                  meesho_charge_rate, wrong_defective_price,
-                 apply_royalty, 0.0 
+                 apply_royalty, 0.0,
+                 yk_return_charges, yk_return_product_cost # <-- PASSED YK PARAMETERS
              )
 
             col_left, col_right = st.columns(2)
@@ -974,6 +1004,11 @@ if main_mode == "Single Product Calculation":
                     ex3, ex4 = st.columns(2)
                     ex3.metric("Marketing (You Pay)", f"₹ {marketing_fee_base:,.2f}", delta="Pay Externally", delta_color="inverse")
                     ex4.metric("Mrkt GST (18%)", f"₹ {marketing_fee_gst:,.2f}", delta="Pay Externally", delta_color="inverse")
+                    
+                    if myntra_new_brand in ["YK", "YK Disney", "YK Marvel"] and (yk_return_charges > 0 or yk_return_product_cost > 0):
+                        ex5, ex6 = st.columns(2)
+                        ex5.metric("Return Logistics", f"₹ {yk_return_charges:,.2f}", delta="Deducted", delta_color="inverse")
+                        ex6.metric("Return Product Loss", f"₹ {yk_return_product_cost:,.2f}", delta="Deducted", delta_color="inverse")
 
                 st.markdown("---")
                 st.metric("💰 NET PROFIT (In Hand)", f"₹ {net_profit:,.2f}", delta=f"Target: ₹ {product_margin_target_rs:,.2f}")
@@ -1021,6 +1056,8 @@ elif main_mode == "Bulk Calculation":
 
     if bulk_platform == 'Jiomart' or bulk_platform == 'Consolidated':
         bulk_jiomart_benefit_rate = st.number_input("Default Jiomart Benefit Rate (%)", value=1.0) / 100.0
+        
+    st.info("Note: For Bulk Return calculations on YK Brands, include 'return_charges' and 'return_product_cost' columns in your CSV.")
 
     st.divider()
 
